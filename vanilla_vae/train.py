@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import torchvision
 import torchvision.transforms as transforms
 from torchvision.utils import make_grid
+from torch.utils.tensorboard import SummaryWriter
 from models import VAE
 
 import matplotlib.pyplot as plt
@@ -32,7 +33,7 @@ def loss_function(recon_x, x, mu, logvar):
 # vae params
 learning_rate = 1e-3
 
-epochs = 100
+epochs = 10
 batch_size = 128
 
 train_dataset = torchvision.datasets.MNIST(root="./data", train=True, transform=transforms.ToTensor(), download=True)
@@ -45,36 +46,45 @@ test_iter = iter(test_loader)
 
 model = VAE()
 
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+optim = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-criterion = nn.KLDivLoss()
+writer = SummaryWriter('./plots/vae')
+
+def train(epoch):
+    model.train()
+    train_loss = 0
+    niter = 0
+    for index, (imgs, _) in enumerate(train_loader):
+        optim.zero_grad()
+        recon_imgs, mu, logvar = model(imgs)
+        loss = loss_function(recon_imgs, imgs, mu, logvar)
+        train_loss += loss.item()
+        loss.backward()
+        optim.step()
+        
+        writer.add_scalar('Train loss', loss.item()/len(imgs), niter + epoch*len(train_loader.dataset))
+        niter += len(imgs)
+
+        if index%50 == 0:
+            print("Epoch: {} [{:6}/{} ({:3.2f}%)]\t Avg. Loss: {:.3f}".format(epoch, index*len(imgs), len(train_loader.dataset), 100. * index/len(train_loader), loss.item()/len(imgs)))
+
+def test(epoch):
+    model.eval()
+    test_loss = 0
+    with torch.no_grad():
+        for index, (imgs, _) in enumerate(test_loader):
+            recon_imgs, mu, logvar = model(imgs)
+            test_loss += loss_function(recon_imgs, imgs, mu, logvar)
+
+            if index == 0:
+                n = min(len(imgs), 8)
+                comparison = torch.cat([imgs[:n], recon_imgs.view(-1, 1, 28, 28)[:n]])
+                writer.add_image('Recon Images', make_grid(comparison), epoch)
+                # show(make_grid(comparison, padding=10))
+
+    test_loss /= len(test_loader.dataset)
+    print("===============================>\t Avg. Test loss: {:.4f}".format(test_loss))
 
 for epoch in range(epochs):
-
-    model.train()
-
-    for ind, (images, labels) in enumerate(train_loader):
-        output, mu, log_sigma = model(images)
-        
-        optimizer.zero_grad()
-
-        loss = loss_function(output, images, mu, log_sigma)
-        loss.backward()
-
-        optimizer.step()
-        
-        if ind%10 == 0:
-            print("Epoch {} [{}/{}] Total loss {}".format(epoch, ind, len(train_loader), loss/len(images)))
-
-    if epoch%10 == 0:
-
-        image, label = next(test_iter)
-        image = image.reshape(-1, 784)
-
-        model.eval()
-
-        output, _, _ = model(image)
-        output = output.reshape(-1, 1,   28, 28)
-
-        output = output[:32]
-        show(make_grid(output, padding=10))
+    train(epoch)
+    test(epoch)
