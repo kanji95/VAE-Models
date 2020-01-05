@@ -1,40 +1,32 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 class VAE(nn.Module):
     
-    def __init__(self, in_features, latent_size, batch_size):
+    def __init__(self):
         super(VAE, self).__init__()
-        self.enc_fc_1 = nn.Linear(in_features, 512)
-        self.enc_fc_2 = nn.Linear(512, 256)
 
-        self.latent_size = latent_size
+        self.fc1 = nn.Linear(784, 400)
+        self.fc21 = nn.Linear(400, 32)
+        self.fc22 = nn.Linear(400, 32)
+        self.fc3 = nn.Linear(32, 400)
+        self.fc4 = nn.Linear(400, 784)
 
-        self.mu = nn.Linear(256, latent_size)
-        self.log_sigma = nn.Linear(256, latent_size)
-        
-        self.epsilon = torch.distributions.Normal(torch.tensor([0.0]), torch.tensor([1.0]))
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        eps = torch.randn_like(std)
+        return mu + eps*std
 
-        # self.conv_1 = nn.Conv2d(in_channels=in_channels, out_channels=8, kernel_size=3, stride=2)
-        # self.conv_2 = nn.Conv2d(in_channels=8, out_channels=16, kernel_size=3, stride=2)
-    
-    def forward(self, input_):
-        input_ = input_.reshape(-1, 784)
-        print("{} 0th level output shape".format(input_.shape))
-        out = self.enc_fc_1(input_)
-        print("{} 1st level output shape".format(out.shape))
-        out = self.enc_fc_2(out)
-        print("{} 2nd level output shape".format(out.shape))
+    def encode(self, x):
+        out = F.relu(self.fc1(x))
+        return self.fc21(out), self.fc22(out)
 
-        mu = self.mu(out)
-        log_sigma = self.log_sigma(out)
+    def decode(self, z):
+        out = F.relu(self.fc3(z))
+        return torch.sigmoid(self.fc4(out))
 
-        eps = self.epsilon.sample(self.latent_size)
-        print(eps.shape)
-        return mu, log_sigma
-        # print("{} 0th level output shape".format(input_.shape))
-        # out = self.conv_1(input_)
-        # print("{} 1st level output shape".format(out.shape))
-        # out = self.conv_2(out)
-        # print("{} 2nd level output shape".format(out.shape))
-        # return torch.flatten(out)
+    def forward(self, x):
+        mu, logvar = self.encode(x.view(-1, 784))
+        z = self.reparameterize(mu, logvar)
+        return self.decode(z), mu, logvar
