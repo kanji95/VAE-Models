@@ -9,6 +9,7 @@ from models import VAE
 
 import matplotlib.pyplot as plt
 import numpy as np
+from datetime import datetime
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("{} device is being used!!".format(device))
@@ -28,7 +29,7 @@ def loss_function(recon_x, x, mu, logvar):
     # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
     KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
-    return BCE + KLD
+    return BCE + 5*KLD
 
 # vae params
 learning_rate = 1e-3
@@ -48,7 +49,8 @@ model = VAE()
 
 optim = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-writer = SummaryWriter('./plots/vae')
+now = datetime.now()
+writer = SummaryWriter('./plots/vae_{}'.format(now.strftime("%d_%H_%M")))
 
 def train(epoch):
     model.train()
@@ -77,7 +79,7 @@ def test(epoch):
             test_loss += loss_function(recon_imgs, imgs, mu, logvar)
 
             if index == 0:
-                n = min(len(imgs), 8)
+                n = min(len(imgs), 16)
                 comparison = torch.cat([imgs[:n], recon_imgs.view(-1, 1, 28, 28)[:n]])
                 writer.add_image('Recon Images', make_grid(comparison), epoch)
                 # show(make_grid(comparison, padding=10))
