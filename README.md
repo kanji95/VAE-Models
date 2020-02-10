@@ -1,1 +1,1 @@
-# vae_models
+# VAE
