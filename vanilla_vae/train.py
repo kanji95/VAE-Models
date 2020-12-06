@@ -19,19 +19,27 @@ def show(img):
     plt.imshow(np.transpose(npimg, (1,2,0)), interpolation='nearest')
     plt.show()
 
-def vae_loss(recon_x, x, mu, logvar, beta=5):
-    BCE = F.binary_cross_entropy(recon_x, x.view(-1, 28*28), reduction='sum')
-    KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-    return BCE + beta*KLD
+## def vae_loss(recon_x, x, mu, logvar, beta=5):
+##     BCE = F.binary_cross_entropy(recon_x, x, reduction='sum')
+##     KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+##     return BCE + beta*KLD
+
+def vae_loss(recon, x, mu, logvar):
+    recon_loss = F.binary_cross_entropy_with_logits(recon, x)
+    KL_loss = -0.5 * (1 + logvar - mu.pow(2) - logvar.exp()).mean()
+    loss = recon_loss + 0.01 * KL_loss
+    return loss
 
 # vae params
 learning_rate = 1e-3
 
 epochs = 30
-batch_size = 128
+batch_size = 64
 
-train_dataset = torchvision.datasets.MNIST(root="/scratch/anurag_deshmukh/data", train=True, transform=transforms.ToTensor(), download=True)
-test_dataset = torchvision.datasets.MNIST(root="/scratch/anurag_deshmukh/data", train=False, transform=transforms.ToTensor())
+transform = transforms.Compose([transforms.Resize(64), transforms.ToTensor()])
+
+train_dataset = torchvision.datasets.CIFAR10(root="/scratch/anurag_deshmukh/data", train=True, transform=transform, download=True)
+test_dataset = torchvision.datasets.CIFAR10(root="/scratch/anurag_deshmukh/data", train=False, transform=transform)
 
 train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=True)
@@ -39,7 +47,7 @@ test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=batch
 test_iter = iter(test_loader)
 
 model = VAE()
-classifier = nn.Sequential(nn.Linear(256, 512), nn.ReLU(), nn.Dropout(0.2), nn.Linear(512, 256), nn.ReLU(), nn.Dropout(0.2), nn.Linear(256, 10), nn.Softmax(dim=-1))
+classifier = nn.Sequential(nn.Flatten(), nn.Linear(1024, 512), nn.ReLU(), nn.Dropout(0.2), nn.Linear(512, 256), nn.ReLU(), nn.Dropout(0.2), nn.Linear(256, 10), nn.Softmax(dim=-1))
 
 #params = list(model.parameters()) + list(classifier.parameters())
 model_optim = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -65,7 +73,7 @@ def train(epoch):
     data_len = len(train_loader.dataset)
     loader_len = len(train_loader)
 
-    #import pdb; pdb.set_trace();
+    # import pdb; pdb.set_trace();
 
     for index, (imgs, labels) in enumerate(train_loader):
         
@@ -85,11 +93,11 @@ def train(epoch):
         c_loss.backward()
         class_optim.step()
 
-        for name, param in classifier.named_parameters():
-            if 'weight' in name:
-                param.data = torch.tanh(param.data)
+        ## for name, param in classifier.named_parameters():
+        ##     if 'weight' in name:
+        ##         param.data = torch.tanh(param.data)
 
-        total_loss = v_loss + c_loss
+        total_loss = v_loss.item() + c_loss.item()
         train_loss += total_loss
        
         preds = probs.argmax(dim=-1)
@@ -135,7 +143,7 @@ def test(epoch):
 
             if index == 0:
                 n = min(len(imgs), 16)
-                comparison = torch.cat([imgs[:n], recon_imgs.view(-1, 1, 28, 28)[:n]])
+                comparison = torch.cat([imgs[:n], recon_imgs[:n]])
                 writer.add_image('Recon Images', make_grid(comparison), epoch)
                 # show(make_grid(comparison, padding=10))
 
